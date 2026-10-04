@@ -17,7 +17,7 @@ podman run -d --name mirror-planner --userns=keep-id --user "$(id -u):$(id -g)" 
   -v ./mirror:/data/mirror:z \
   -v ./oc-mirror-cache:/data/cache:z \
   -v ./pull-secret.json:/run/secrets/pull-secret.json:ro,z \
-  quay.io/nr3v0/openshift-mirror-planner:v1.0.0
+  quay.io/nr3v0/openshift-mirror-planner:v1.0.1
 ```
 
 Open http://127.0.0.1:8088/, build the plan, then mirror it to disk with the same folders:
@@ -26,7 +26,7 @@ Open http://127.0.0.1:8088/, build the plan, then mirror it to disk with the sam
 podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" \
   -v ./mirror:/data/mirror:z -v ./oc-mirror-cache:/data/cache:z \
   -v ./pull-secret.json:/run/secrets/pull-secret.json:ro,z \
-  quay.io/nr3v0/openshift-mirror-planner:v1.0.0 mirror          # add --dry-run to only resolve
+  quay.io/nr3v0/openshift-mirror-planner:v1.0.1 mirror          # add --dry-run to only resolve
 ```
 
 `mirror/` then holds `mirror_*.tar`, `imageset-config.yaml` and `working-dir/`. Carry them
@@ -54,10 +54,21 @@ your folders and the files it creates belong to you. The UI has no login, so
 publish it on `127.0.0.1` and reach it from elsewhere through an SSH tunnel:
 `ssh -L 8088:127.0.0.1:8088 <host>`.
 
+### Image contents and updates
+
+The runtime is `ubi9/ubi-micro` with only `python3.12` and CA certificates added, plus the
+planner's Python environment and the `oc` and `oc-mirror` binaries. It has no package manager,
+compilers or other build tooling. Every build pulls the newest base images (`--pull=always`)
+and applies all available RHEL updates in each stage, so rebuilding picks up new fixes. `make
+scan` lists the remaining vulnerabilities with Trivy. Those in `oc` and `oc-mirror` come from
+the Go libraries Red Hat builds them with, and are fixed by their next release; the build
+always fetches the newest.
+
 ### With make
 
 ```bash
 make image                    # build locally; OCP_CHANNEL=stable-4.21 picks another oc version
+make scan                     # vulnerability report for the image
 make start                    # UI in the background; make stop / make logs
 make mirror                   # or: make dry-run
 make help                     # MIRROR_DIR, CACHE_DIR, PULL_SECRET and PORT pick the folders

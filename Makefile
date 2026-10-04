@@ -19,11 +19,12 @@ RUN_ARGS = --userns=keep-id --user $(shell id -u):$(shell id -g) \
 	-v $(CACHE_DIR):/data/cache:z \
 	-v $(PULL_SECRET):/run/secrets/pull-secret.json:ro,z
 
-.PHONY: help venv test serve clients image run start stop logs mirror dry-run imageset vendor-patternfly check-secret
+.PHONY: help venv test serve clients image scan run start stop logs mirror dry-run imageset vendor-patternfly check-secret
 
 help:
 	@echo "Container (self-contained: oc and oc-mirror are inside the image)"
-	@echo "  make image                    build $(IMAGE) (OCP_CHANNEL=$(OCP_CHANNEL) picks the oc version)"
+	@echo "  make image                    build $(IMAGE) from freshly pulled, fully updated bases"
+	@echo "  make scan                     list the image's vulnerabilities (Trivy, run as a container)"
 	@echo "  make run | start | stop | logs  UI on http://127.0.0.1:$(PORT)/ (foreground | background)"
 	@echo "  make mirror                   oc-mirror --v2 to disk for the plan, in the container"
 	@echo "  make dry-run                  same, resolving images without downloading them"
@@ -53,7 +54,16 @@ vendor-patternfly:
 
 # ---------------------------------------------------------------- container
 image:
-	$(PODMAN) build --build-arg OCP_CHANNEL=$(OCP_CHANNEL) -t $(IMAGE) .
+	$(PODMAN) build --pull=always --build-arg OCP_CHANNEL=$(OCP_CHANNEL) -t $(IMAGE) .
+
+# Vulnerability report for the built image; TRIVY_ARGS="--severity HIGH,CRITICAL" narrows it.
+TRIVY_IMAGE ?= docker.io/aquasec/trivy:latest
+scan:
+	@mkdir -p $(CURDIR)/.scan
+	$(PODMAN) save --format docker-archive -o $(CURDIR)/.scan/image.tar $(IMAGE)
+	$(PODMAN) run --rm -v $(CURDIR)/.scan:/scan:z $(TRIVY_IMAGE) image --quiet --cache-dir /scan/cache \
+	    --input /scan/image.tar --scanners vuln $(TRIVY_ARGS)
+	@rm -f $(CURDIR)/.scan/image.tar
 
 check-secret:
 	@test -n "$(PULL_SECRET)" -a -f "$(PULL_SECRET)" || { echo "set PULL_SECRET=/path/to/pull-secret.json"; exit 1; }

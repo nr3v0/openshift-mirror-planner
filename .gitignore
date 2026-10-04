@@ -7,3 +7,4 @@ oc-mirror-cache/
 output/
 *.pull-secret.json
 *pull-secret*.json
+.scan/
