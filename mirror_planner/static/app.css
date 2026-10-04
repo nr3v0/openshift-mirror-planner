@@ -1,0 +1,66 @@
+/* OpenShift mirror planner overrides on top of PatternFly 6. Colours come from PatternFly tokens; Red Hat red
+   (--pf-t--color--red--50) is used only as the brand accent, as in Red Hat product mastheads. */
+:root { --fh-brand: var(--pf-t--color--red--50); }
+
+/* dark masthead, as in the OpenShift console; PatternFly's dark theme is root-scoped, so the
+   masthead takes the dark palette directly */
+.fh-masthead { border-block-start: 4px solid var(--fh-brand);
+  --pf-v6-c-masthead--BackgroundColor: var(--pf-t--color--gray--95);
+  background-color: var(--pf-t--color--gray--95); color: var(--pf-t--color--white, #fff);
+  padding-block: var(--pf-t--global--spacer--sm); }
+.fh-masthead .fh-brand__name { color: var(--pf-t--color--white, #fff); }
+.fh-masthead .fh-brand__app { color: var(--pf-t--color--gray--30); border-inline-start-color: var(--pf-t--color--gray--80); }
+.fh-masthead .fh-muted { color: var(--pf-t--color--gray--30); }
+.fh-brand { display: flex; align-items: center; gap: var(--pf-t--global--spacer--sm); text-decoration: none; }
+.fh-brand__mark { inline-size: 1.75rem; block-size: 1.75rem; border-radius: var(--pf-t--global--border--radius--small);
+  background: var(--fh-brand); color: #fff; display: grid; place-items: center;
+  font-family: var(--pf-t--global--font--family--heading); font-weight: 700; font-size: .9rem; }
+.fh-brand__name { font-family: var(--pf-t--global--font--family--heading); font-size: var(--pf-t--global--font--size--heading--sm);
+  color: var(--pf-t--global--text--color--regular); }
+.fh-brand__name strong { font-weight: var(--pf-t--global--font--weight--heading--bold); }
+.fh-brand__app { color: var(--pf-t--global--text--color--subtle); padding-inline-start: var(--pf-t--global--spacer--sm);
+  border-inline-start: 1px solid var(--pf-t--global--border--color--default); margin-inline-start: var(--pf-t--global--spacer--xs); }
+.fh-masthead__meta { margin-inline-start: auto; display: flex; gap: var(--pf-t--global--spacer--sm); align-items: center; }
+
+.fh-stack { display: grid; gap: var(--pf-t--global--spacer--lg); align-content: start; }
+.fh-inline { display: inline-flex; gap: var(--pf-t--global--spacer--xs); align-items: center; margin: 0; }
+.fh-row-actions { display: flex; gap: var(--pf-t--global--spacer--xs); flex-wrap: wrap; justify-content: flex-end; }
+.fh-muted { color: var(--pf-t--global--text--color--subtle); font-size: var(--pf-t--global--font--size--body--sm); }
+.fh-mono { font-family: var(--pf-t--global--font--family--mono); font-size: var(--pf-t--global--font--size--body--sm);
+  overflow-wrap: anywhere; }  /* break long references only where they must, never mid-name in tables */
+/* in tables, names wrap at their hyphens like words; only image references may break anywhere */
+.pf-v6-c-table .fh-mono { overflow-wrap: normal; }
+.pf-v6-c-table td.fh-mono, .pf-v6-c-table .fh-mono.fh-wrap { overflow-wrap: anywhere; }
+.fh-wrap-anywhere { overflow-wrap: anywhere; }
+.fh-labels { display: inline-flex; gap: var(--pf-t--global--spacer--xs); flex-wrap: wrap; vertical-align: middle; }
+.fh-selected { background: var(--pf-t--global--background--color--secondary--default); }
+.fh-description summary { cursor: pointer; color: var(--pf-t--global--text--color--link--default);
+  font-size: var(--pf-t--global--font--size--body--sm); }
+.fh-description p { margin: var(--pf-t--global--spacer--xs) 0 0; max-inline-size: 60ch; }
+.fh-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: var(--pf-t--global--spacer--md); }
+.fh-code { max-block-size: 30rem; overflow: auto; }
+.fh-toolbar-form { display: flex; flex-wrap: wrap; gap: var(--pf-t--global--spacer--sm); align-items: center; }
+.fh-toolbar-form .fh-grow { flex: 1 1 18rem; }
+
+/* native <dialog> carrying a PatternFly modal box */
+dialog.fh-dialog { border: 0; padding: 0; background: transparent; max-inline-size: min(36rem, 92vw); inline-size: 100%; }
+dialog.fh-dialog::backdrop { background-color: var(--pf-t--global--background--color--backdrop--default, rgba(3, 3, 3, .62)); }
+.fh-dialog__status { display: flex; gap: var(--pf-t--global--spacer--md); align-items: center; margin-block-end: var(--pf-t--global--spacer--md); }
+.fh-dialog__status .pf-v6-c-spinner { flex: none; }
+
+/* a checkbox and its label are one unit: the pair moves to the next line together */
+.fh-check { display: inline-grid; flex: none; white-space: nowrap; }
+.fh-check .pf-v6-c-check__label { white-space: nowrap; }
+.fh-gap-top { margin-block-start: var(--pf-t--global--spacer--md); }
+.fh-gap-top-sm { margin-block-start: var(--pf-t--global--spacer--sm); }
+.fh-block { display: block; }
+.fh-preset { border: var(--pf-t--global--border--width--box--default, 1px) solid var(--pf-t--global--border--color--default);
+  box-shadow: none; }
+
+/* results being replaced by a live search */
+#operator-results { transition: opacity .15s; }
+#operator-results.fh-loading { opacity: .5; }
+
+/* native file input kept focusable and usable, shown through its PatternFly-styled label */
+.fh-file-input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; overflow: hidden; }
+.fh-file-input:focus-visible + label { outline: 2px solid var(--pf-t--global--border--color--clicked, #0066cc); outline-offset: 2px; }

@@ -1,0 +1,8 @@
+.venv
+.git
+dl
+mirror
+output
+**/__pycache__
+*.egg-info
+tests

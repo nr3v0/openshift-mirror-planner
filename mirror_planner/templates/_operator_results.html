@@ -1,0 +1,55 @@
+{# Search results for the Find operators card. Rendered inside the full page and alone by GET /search. #}
+{% from "macros.html" import label, button, select_wrap, empty %}
+{% macro hidden_back() %}<input type="hidden" name="back_to" value="{{ here }}">{% endmacro %}
+
+{% if catalog != all_key and image not in sums %}
+  {{ empty("Catalog not scanned", "Scan " ~ catalog ~ " above to search it.") }}
+{% elif catalog == all_key and not sums %}
+  {{ empty("No catalogs scanned", "Scan at least one catalog above to search.") }}
+{% elif not results %}
+  {{ empty("No operators found", "Try another search term or catalog, or clear the disconnected filter.") }}
+{% else %}
+<p class="fh-muted fh-gap-top">{{ results | length }} result(s){% if results | length == 100 %}, first 100 shown{% endif %}{% if catalog == all_key %} across {{ sums | length }} scanned catalogs{% endif %}.</p>
+<table class="pf-v6-c-table pf-m-compact pf-m-grid-lg" role="grid" aria-label="Operators">
+  <thead class="pf-v6-c-table__thead"><tr class="pf-v6-c-table__tr">
+    <th class="pf-v6-c-table__th" scope="col">Operator</th>
+    <th class="pf-v6-c-table__th" scope="col">Channel</th>
+    <th class="pf-v6-c-table__th" scope="col"><span class="pf-v6-screen-reader">Actions</span></th></tr></thead>
+  <tbody class="pf-v6-c-table__tbody">
+  {% for img, p in results %}
+  {% set sel = selected.get((img, p.name)) %}
+  <tr class="pf-v6-c-table__tr{% if sel %} fh-selected{% endif %}">
+    <td class="pf-v6-c-table__td" data-label="Operator">
+      <div><strong>{{ p.display_name or p.name }}</strong> <span class="fh-mono fh-muted">{{ p.name }}</span></div>
+      <div class="fh-labels">
+        {% if p.disconnected %}{{ label("Disconnected", "green", "check-circle") }}
+        {% elif p.disconnected is none %}{{ label("Disconnected: not stated", "orange") }}
+        {% else %}{{ label("Needs internet", "red", "exclamation-circle") }}{% endif %}
+        {% if p.deprecated %}{{ label("Deprecated", "red") }}{% endif %}
+        {% if sel %}{{ label("Selected", "blue") }}{% endif %}
+        {% if catalog == all_key %}{{ label(names.get(img, img).split("/")[-1]) }}{% endif %}
+      </div>
+      <div class="fh-muted">{{ p.provider or "" }}{% if p.requires_packages %} · needs {{ p.requires_packages | join(", ") }}{% endif %}</div>
+      {% if p.description %}<details class="fh-description"><summary>Description</summary><p>{{ p.description }}</p></details>{% endif %}
+    </td>
+    <td class="pf-v6-c-table__td" data-label="Channel">
+      <form class="fh-inline" method="post" action="/packages/add" id="add-{{ loop.index }}">
+        <input type="hidden" name="image" value="{{ img }}"><input type="hidden" name="name" value="{{ p.name }}">{{ hidden_back() }}
+        <span class="pf-v6-c-form-control">
+          <select name="channel" aria-label="Channel for {{ p.name }}">
+            {% for c in p.channels %}
+            <option value="{{ c.name }}" {% if (sel and c.name in sel.channels) or ((not sel or not sel.channels) and c.name == p.default_channel) %}selected{% endif %}>
+              {{ c.name }} · {{ c.head }}{% if c.name == p.default_channel %} (default){% endif %}</option>
+            {% endfor %}
+          </select>{{ select_wrap() }}</span>
+      </form></td>
+    <td class="pf-v6-c-table__td pf-v6-c-table__action"><div class="fh-row-actions">
+      {{ button("Update" if sel else "Add", "secondary" if sel else "primary", ic=None if sel else "plus", small=True, attrs='form="add-' ~ loop.index ~ '"') }}
+      {% if sel %}<form class="fh-inline" method="post" action="/packages/remove">
+        <input type="hidden" name="image" value="{{ img }}"><input type="hidden" name="name" value="{{ p.name }}">{{ hidden_back() }}
+        {{ button("Remove", "link", small=True) }}</form>{% endif %}</div></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}

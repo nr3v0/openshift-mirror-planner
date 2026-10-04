@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, alert, label, button, card_open, card_close, select_wrap, empty %}
+{% block title %}OpenShift mirror planner{% endblock %}
+{% block meta %}
+  {{ label("OpenShift " ~ (plan.platform.max_version or plan.platform.channel), "blue") }}
+  <span class="fh-muted">saves to <span class="fh-mono">{{ mirror_dir }}</span></span>
+{% endblock %}
+
+{% macro hidden_back() %}<input type="hidden" name="back_to" value="{{ here }}">{% endmacro %}
+
+{# A checkbox and its label as one unit that never splits across lines. #}
+{% macro check(id, name, text, checked=False) -%}
+<input type="hidden" name="{{ name }}" value="false">
+<div class="pf-v6-c-check fh-check"><input class="pf-v6-c-check__input" type="checkbox" id="{{ id }}" name="{{ name }}" value="true" {% if checked %}checked{% endif %}>
+  <label class="pf-v6-c-check__label" for="{{ id }}">{{ text }}</label></div>
+{%- endmacro %}
+
+{% block body %}
+<section class="pf-v6-c-page__main-section">
+  <div class="pf-v6-l-grid pf-m-gutter">
+
+  {# ------------------------------------------------------------------ left: choose #}
+  <div class="pf-v6-l-grid__item pf-m-12-col pf-m-7-col-on-xl fh-stack">
+
+    {{ card_open("OpenShift release", region="release") }}
+      <form method="post" action="/platform" class="pf-v6-c-form" id="release-form" data-regions="release meta catalogs search results selected images isc">
+        {{ hidden_back() }}
+        <div class="fh-toolbar-form">
+          <div class="pf-v6-c-form__group">
+            <div class="pf-v6-c-form__group-label"><label class="pf-v6-c-form__label" for="channel"><span class="pf-v6-c-form__label-text">Channel</span></label></div>
+            <div class="pf-v6-c-form__group-control"><span class="pf-v6-c-form-control">
+              <select id="channel" name="channel">
+                {% for c in channels %}<option {% if c == plan.platform.channel %}selected{% endif %}>{{ c }}</option>{% endfor %}
+              </select>{{ select_wrap() }}</span></div></div>
+          {% for field, value, title in [("min_version", plan.platform.min_version, "Min version"), ("max_version", plan.platform.max_version, "Max version")] %}
+          <div class="pf-v6-c-form__group">
+            <div class="pf-v6-c-form__group-label"><label class="pf-v6-c-form__label" for="{{ field }}"><span class="pf-v6-c-form__label-text">{{ title }}</span></label></div>
+            <div class="pf-v6-c-form__group-control"><span class="pf-v6-c-form-control">
+              <select id="{{ field }}" name="{{ field }}">
+                <option value="">{{ "Oldest in channel" if field == "min_version" else "Newest in channel" }}</option>
+                {% for v in versions %}<option {% if v == value %}selected{% endif %}>{{ v }}</option>{% endfor %}
+                {% if value and value not in versions %}<option selected>{{ value }}</option>{% endif %}
+              </select>{{ select_wrap() }}</span></div></div>
+          {% endfor %}
+        </div>
+        <div class="fh-toolbar-form">
+          {{ check("update_graph", "update_graph", "Include the update graph", plan.platform.graph) }}
+          {{ button("Save release", "primary") }}
+        </div>
+      </form>
+      <p class="fh-muted fh-gap-top-sm" id="release-help">
+        {% if graph_error %}{{ graph_error }}; showing the saved values only.{% else %}Channels and versions come from the
+        OpenShift update service. Equal min and max mirror exactly one release; the operator indexes follow the max
+        version. The update graph is needed for an in-cluster OpenShift Update Service.{% endif %}</p>
+    {{ card_close() }}
+
+    {{ card_open("Operator catalogs", region="catalogs") }}
+      <table class="pf-v6-c-table pf-m-compact pf-m-grid-md" role="grid" aria-label="Operator catalogs">
+        <thead class="pf-v6-c-table__thead"><tr class="pf-v6-c-table__tr">
+          <th class="pf-v6-c-table__th" scope="col">Catalog</th>
+          <th class="pf-v6-c-table__th" scope="col">Status</th>
+          <th class="pf-v6-c-table__th" scope="col"><span class="pf-v6-screen-reader">Actions</span></th></tr></thead>
+        <tbody class="pf-v6-c-table__tbody">
+        {% for name, img in cats.items() %}
+        <tr class="pf-v6-c-table__tr">
+          <td class="pf-v6-c-table__td" data-label="Catalog">
+            <strong>{% if img in extra %}Added catalog{% else %}{{ name }}{% endif %}</strong>
+            {% if img in extra and extra[img].insecure %}{{ label("TLS not verified", "orange", "exclamation-triangle") }}{% endif %}
+            <div class="fh-mono fh-muted fh-wrap">{{ img }}</div></td>
+          <td class="pf-v6-c-table__td" data-label="Status">
+            {% if img in sums %}{% set n = sums[img].packages | length %}{{ label(n ~ (" operator" if n == 1 else " operators"), "green", "check-circle") }}
+              <div class="fh-muted">scanned {{ sums[img].extracted_at.replace("T", " ")[:16] }} UTC</div>
+              {% if sums[img].stale %}{{ label("Rescan needed", "orange") }}{% endif %}
+            {% else %}{{ label("Not scanned") }}{% endif %}</td>
+          <td class="pf-v6-c-table__td pf-v6-c-table__action">
+            <div class="fh-row-actions">
+              <form class="fh-inline" method="post" action="/catalogs/refresh" data-title="Scanning {{ img }}" data-regions="catalogs search results selected images isc">
+                <input type="hidden" name="image" value="{{ img }}">{{ hidden_back() }}
+                {{ button("Rescan" if img in sums else "Scan", "secondary", ic="sync-alt", small=True) }}</form>
+              {% if img in extra %}
+              <form class="fh-inline" method="post" action="/catalogs/remove" data-regions="catalogs search results selected images isc"
+                    data-confirm="Remove {{ img }} and its selected operators?">
+                <input type="hidden" name="image" value="{{ img }}">{{ hidden_back() }}
+                {{ button("Remove", "secondary danger", ic="trash", small=True) }}</form>
+              {% endif %}
+            </div></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <form class="fh-toolbar-form fh-gap-top" method="post" action="/catalogs/add" data-title="Adding catalog" data-regions="catalogs search results selected images isc">
+        {{ hidden_back() }}
+        <span class="pf-v6-c-form-control fh-grow">
+          <input name="image" required aria-label="Catalog index image"
+                 placeholder="registry.example.com/ops/my-operator-index:v4.22"></span>
+        {{ check("insecure_tls", "insecure_tls", "Skip TLS verification") }}
+        {{ check("scan_now", "scan", "Scan now", True) }}
+        {{ button("Add catalog", "secondary", ic="plus") }}
+      </form>
+      <p class="fh-muted fh-gap-top-sm">Any file-based catalog index image with a tag or digest. The pull secret must
+        hold credentials for its registry. Scans run <span class="fh-mono">oc image extract</span> on the index (about 15 s).</p>
+    {{ card_close() }}
+
+    {{ card_open("Suggested sets") }}
+      <div class="fh-presets">
+        {% for id, p in presets.items() %}
+        <div class="pf-v6-c-card pf-m-compact fh-preset">
+          <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__header-main"><div class="pf-v6-c-card__title">
+            <h3 class="pf-v6-c-card__title-text">{{ p.title }}</h3></div></div></div>
+          <div class="pf-v6-c-card__body fh-muted">{{ p.description }}</div>
+          <div class="pf-v6-c-card__footer">
+            <form method="post" action="/presets/{{ id }}" data-regions="results selected images isc">{{ hidden_back() }}{{ button("Add set", "secondary", ic="plus", small=True) }}</form></div>
+        </div>
+        {% endfor %}
+      </div>
+    {{ card_close() }}
+
+    {{ card_open("Find operators") }}
+      <div data-region="search">
+      <form method="get" action="/" class="fh-toolbar-form" role="search" id="search-form">
+        <span class="pf-v6-c-form-control fh-grow">
+          <input type="search" name="q" value="{{ q }}" placeholder="Name, description or provider" aria-label="Search operators" autofocus></span>
+        <span class="pf-v6-c-form-control">
+          <select name="catalog" aria-label="Catalog">
+            <option value="{{ all_key }}" {% if catalog == all_key %}selected{% endif %}>All catalogs</option>
+            {% for name, img in cats.items() %}
+            <option value="{{ name }}" {% if name == catalog %}selected{% endif %}>{{ name if img not in extra else img.split("/")[-1] }}</option>
+            {% endfor %}
+          </select>{{ select_wrap() }}</span>
+        {{ check("disc", "disconnected_only", "Disconnected-capable only", disconnected_only) }}
+        {{ button("Search", "primary", ic="search") }}
+      </form>
+
+      </div>
+      <div id="operator-results" data-region="results" aria-live="polite">{% include "_operator_results.html" %}</div>
+    {{ card_close() }}
+  </div>
+
+  {# ------------------------------------------------------------------ right: outcome #}
+  <div class="pf-v6-l-grid__item pf-m-12-col pf-m-5-col-on-xl fh-stack">
+
+    {{ card_open("Selected operators", region="selected") }}
+      {% if not plan.catalogs %}{{ empty("Nothing selected", "Add operators from the search, or add a suggested set.") }}{% endif %}
+      {% for c in plan.catalogs %}
+      <div class="fh-mono fh-muted fh-gap-top-sm">{{ c.image }}</div>
+      <table class="pf-v6-c-table pf-m-compact" role="grid" aria-label="Selected from {{ c.image }}">
+        <tbody class="pf-v6-c-table__tbody">
+        {% for p in c.packages %}
+        <tr class="pf-v6-c-table__tr">
+          <td class="pf-v6-c-table__td"><span class="fh-mono">{{ p.name }}</span></td>
+          {% set pk = sums[c.image].package(p.name) if c.image in sums else None %}
+          <td class="pf-v6-c-table__td fh-muted">{{ p.channels | join(", ") if p.channels else ((pk.default_channel ~ " (default)") if pk else "default channel") }}</td>
+          <td class="pf-v6-c-table__td">{{ label(p.reason, "blue" if p.reason.startswith("preset") else None) }}</td>
+          <td class="pf-v6-c-table__td pf-v6-c-table__action"><form class="fh-inline" method="post" action="/packages/remove">
+            <input type="hidden" name="image" value="{{ c.image }}"><input type="hidden" name="name" value="{{ p.name }}">{{ hidden_back() }}
+            {{ button("Remove", "link", small=True) }}</form></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endfor %}
+      {% if dep_rows %}
+      <h3 class="pf-v6-c-title pf-m-md fh-gap-top">Added as dependencies</h3>
+      <table class="pf-v6-c-table pf-m-compact" role="grid" aria-label="Dependencies">
+        <tbody class="pf-v6-c-table__tbody">
+        {% for img, name, needed_by in dep_rows %}
+        <tr class="pf-v6-c-table__tr"><td class="pf-v6-c-table__td"><span class="fh-mono">{{ name }}</span></td>
+          <td class="pf-v6-c-table__td fh-muted">needed by {{ needed_by | join(", ") }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    {{ card_close() }}
+
+    {{ card_open("Additional images", region="images") }}
+      {% if stale %}{{ alert("warning", "Rescan " ~ stale | join(", ") ~ ": scanned by an older version, so its must-gather images are missing.") }}{% endif %}
+      <table class="pf-v6-c-table pf-m-compact" role="grid" aria-label="Automatic additional images">
+        <tbody class="pf-v6-c-table__tbody">
+        {% for img, why in auto_images %}
+        <tr class="pf-v6-c-table__tr"><td class="pf-v6-c-table__td fh-mono">{{ img.split("@")[0] }}</td>
+          <td class="pf-v6-c-table__td fh-muted">{{ why }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="fh-muted fh-gap-top-sm">Added automatically: the base images from <span class="fh-mono">presets.yaml</span>
+        and each mirrored operator's must-gather. The OpenShift must-gather ships with the release.</p>
+      <form method="post" action="/images" class="fh-gap-top-sm" data-regions="images isc">
+        {{ hidden_back() }}
+        <span class="pf-v6-c-form-control pf-m-textarea pf-m-resize-vertical fh-block">
+          <textarea name="additional_images" rows="3" aria-label="Your additional images"
+            placeholder="Your own images, one reference per line">{{ plan.additional_images | join("\n") }}</textarea></span>
+        <div class="fh-gap-top-sm">{{ button("Save images", "secondary") }}</div>
+      </form>
+    {{ card_close() }}
+
+    {{ card_open("imageset-config.yaml", region="isc") }}
+      <div class="pf-v6-c-code-block"><div class="pf-v6-c-code-block__content fh-code">
+        <pre class="pf-v6-c-code-block__pre"><code class="pf-v6-c-code-block__code">{{ isc }}</code></pre></div></div>
+      <p class="fh-muted fh-gap-top-sm">Next: <span class="fh-mono">make mirror</span> (or <span class="fh-mono">mirror-planner mirror</span>) writes the bundle to
+        <span class="fh-mono">{{ mirror_dir }}</span>.</p>
+    {{ card_close() }}
+    {{ card_open("Import ImageSetConfiguration") }}
+      <form method="post" action="/import" enctype="multipart/form-data" class="fh-toolbar-form" id="import-form"
+            data-regions="release meta catalogs search results selected images isc" data-confirm="Replace the current plan with the contents of this file?">
+        {{ hidden_back() }}
+        <input type="file" id="isc-file" name="file" accept=".yaml,.yml,application/yaml,text/yaml" required class="fh-file-input">
+        <label class="pf-v6-c-button pf-m-secondary" for="isc-file"><span class="pf-v6-c-button__icon pf-m-start">{{ icon("upload") }}</span><span class="pf-v6-c-button__text">Browse…</span></label>
+        <span class="fh-muted fh-grow fh-wrap-anywhere" id="isc-file-name" aria-live="polite">No file selected</span>
+        {{ button("Import", "primary") }}
+      </form>
+      <p class="fh-muted fh-gap-top-sm">Replaces the release, catalogs, operators and your own images with the contents of an
+        oc-mirror v2 or v1 <span class="fh-mono">imageset-config.yaml</span>. Anything the planner can't represent is reported.</p>
+    {{ card_close() }}
+  </div>
+
+  </div>
+</section>
+
+<dialog id="busy" class="fh-dialog" aria-labelledby="busy-title" data-job="{{ job_id }}" data-title="{{ job_title }}">
+  <div class="pf-v6-c-modal-box pf-m-sm" aria-modal="true">
+    <header class="pf-v6-c-modal-box__header"><div class="pf-v6-c-modal-box__header-main">
+      <h1 class="pf-v6-c-modal-box__title fh-wrap-anywhere" id="busy-title">Working</h1></div></header>
+    <div class="pf-v6-c-modal-box__body">
+      <div class="fh-dialog__status">
+        <svg class="pf-v6-c-spinner pf-m-md" id="busy-spinner" role="progressbar" viewBox="0 0 100 100" aria-label="Working">
+          <circle class="pf-v6-c-spinner__path" cx="50" cy="50" r="45" fill="none"></circle></svg>
+        <div><strong id="busy-phase">Starting</strong><div class="fh-muted" id="busy-detail"></div></div>
+      </div>
+      <div class="pf-v6-c-progress pf-m-sm" id="busy-progress" hidden>
+        <div class="pf-v6-c-progress__description" id="busy-progress-desc">Reading packages</div>
+        <div class="pf-v6-c-progress__status" aria-hidden="true"><span class="pf-v6-c-progress__measure" id="busy-measure">0%</span></div>
+        <div class="pf-v6-c-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+             aria-labelledby="busy-progress-desc" id="busy-bar"><div class="pf-v6-c-progress__indicator" id="busy-indicator" style="width:0%"></div></div>
+      </div>
+      <p class="fh-muted fh-gap-top"><span id="busy-elapsed">0</span> s · the page reloads when this finishes</p>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Page behaviour without reloads, dependency-free. Every POST form is sent with fetch; the
+// server answers with a short JSON note (X-FH-Fetch: 1) and the page re-renders only the regions
+// that action can change, by fetching the page and swapping [data-region] elements. Catalog scans
+// open a locking progress dialog and poll their job. Without JavaScript the forms post normally.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DEFAULT_REGIONS = "results selected images isc";
+  const SCAN_REGIONS = "catalogs search results selected images isc";
+
+  // ---------------------------------------------------------------- toasts (PatternFly alert group)
+  const ICONS = {success: "check-circle", danger: "exclamation-circle", warning: "exclamation-triangle", info: "info-circle"};
+  function toast(variant, text) {
+    const li = document.createElement("li");
+    li.className = "pf-v6-c-alert-group__item";
+    li.innerHTML = `<div class="pf-v6-c-alert pf-m-${variant}" role="alert">
+      <div class="pf-v6-c-alert__icon"><i class="fas fa-fw fa-${ICONS[variant]}" aria-hidden="true"></i></div>
+      <p class="pf-v6-c-alert__title fh-wrap-anywhere"></p>
+      <div class="pf-v6-c-alert__action"><button class="pf-v6-c-button pf-m-plain" type="button" aria-label="Close">
+        <span class="pf-v6-c-button__icon"><i class="fas fa-times" aria-hidden="true"></i></span></button></div></div>`;
+    li.querySelector(".pf-v6-c-alert__title").textContent = text;
+    li.querySelector("button").addEventListener("click", () => li.remove());
+    $("toasts").append(li);
+    setTimeout(() => li.remove(), variant === "success" ? 6000 : 15000);
+  }
+
+  // ---------------------------------------------------------------- region refresh
+  function pageUrl() {  // the current page without one-off parameters
+    const params = new URLSearchParams(window.location.search);
+    for (const k of ["job", "msg", "err"]) params.delete(k);
+    return window.location.pathname + (params.size ? `?${params}` : "");
+  }
+
+  async function refresh(regions, location) {
+    const url = location || pageUrl();
+    const html = await (await fetch(url, {cache: "no-store"})).text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const name of regions.split(/\s+/)) {
+      const now = document.querySelector(`[data-region="${name}"]`);
+      const next = doc.querySelector(`[data-region="${name}"]`);
+      if (now && next) now.innerHTML = next.innerHTML;
+    }
+    if (url !== window.location.pathname + window.location.search) history.replaceState(null, "", url);
+  }
+
+  // ---------------------------------------------------------------- busy button
+  const SPINNER = `<span class="pf-v6-c-button__progress"><svg class="pf-v6-c-spinner pf-m-md" role="progressbar"
+    viewBox="0 0 100 100" aria-label="Working"><circle class="pf-v6-c-spinner__path" cx="50" cy="50" r="45" fill="none"></circle></svg></span>`;
+  function busy(button, on) {
+    if (!button) return;
+    button.disabled = on;
+    button.classList.toggle("pf-m-progress", on);
+    button.classList.toggle("pf-m-in-progress", on);
+    if (on) button.insertAdjacentHTML("afterbegin", SPINNER);
+    else button.querySelector(".pf-v6-c-button__progress")?.remove();
+  }
+
+  // ---------------------------------------------------------------- scan progress dialog
+  const dlg = $("busy");
+  const phases = {starting: "Starting", extracting: "Extracting the catalog", parsing: "Reading packages",
+                  done: "Done", failed: "Failed"};
+  dlg.addEventListener("cancel", (e) => e.preventDefault());  // Esc must not unlock the page
+
+  function lock(title, on = true) {
+    $("busy-title").textContent = title || "Working";
+    document.querySelectorAll("button, input, select, textarea").forEach((c) => {
+      if (!dlg.contains(c)) c.disabled = on;
+    });
+    if (on && !dlg.open) dlg.showModal();
+    if (!on && dlg.open) dlg.close();
+  }
+
+  function showJob(job) {
+    $("busy-phase").textContent = phases[job.phase] || job.phase;
+    $("busy-detail").textContent = job.detail || "";
+    $("busy-elapsed").textContent = job.elapsed;
+    const known = job.fraction !== null && job.fraction !== undefined;
+    $("busy-progress").hidden = !known;
+    $("busy-spinner").style.display = known ? "none" : "";
+    if (known) {
+      const pct = Math.round(job.fraction * 100);
+      $("busy-indicator").style.width = pct + "%";
+      $("busy-measure").textContent = pct + "%";
+      $("busy-bar").setAttribute("aria-valuenow", pct);
+    }
+  }
+
+  async function followJob(id, title, location) {
+    lock(title);
+    for (;;) {
+      let job;
+      try {
+        job = await (await fetch(`/jobs/${id}`, {cache: "no-store"})).json();
+      } catch (e) {
+        $("busy-detail").textContent = "Lost contact with the planner, retrying";
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      showJob(job);
+      if (job.state === "running") { await new Promise((r) => setTimeout(r, 1000)); continue; }
+      if (job.state === "unknown") { lock(title, false); return; }
+      try { await refresh(SCAN_REGIONS, location); } finally { lock(title, false); }
+      if (job.msg) toast("success", job.msg);
+      if (job.err) toast("danger", job.err);
+      return;
+    }
+  }
+
+  // ---------------------------------------------------------------- every POST form
+  document.addEventListener("submit", async (e) => {
+    const form = e.target;
+    if (form.method.toLowerCase() !== "post") return;
+    e.preventDefault();
+    if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;
+    const button = e.submitter || form.querySelector("[type=submit]") || document.querySelector(`[form="${form.id}"]`);
+    const data = new FormData(form, e.submitter);
+    const body = form.enctype === "multipart/form-data" ? data : new URLSearchParams(data);
+    busy(button, true);
+    try {
+      const r = await fetch(form.action, {method: "POST", body, headers: {"X-FH-Fetch": "1"}});
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const note = await r.json();
+      busy(button, false);
+      if (note.job) { await followJob(note.job, note.title || form.dataset.title, note.location); return; }
+      if (!note.err) await refresh(form.dataset.regions || DEFAULT_REGIONS, note.location);
+      if (note.msg) toast("success", note.msg);
+      if (note.warn) toast("warning", note.warn);
+      if (note.err) toast("danger", note.err);
+      if (!note.err && form.id === "import-form") { form.reset(); $("isc-file-name").textContent = "No file selected"; }
+    } catch (err) {
+      busy(button, false);
+      toast("danger", `Request failed: ${err.message}`);
+    }
+  });
+
+  // ---------------------------------------------------------------- operator search
+  // Fetch only the results section; keep the rest of the page as is.
+  let inflight = null, timer = null;
+  function searchParams(form) {
+    const params = new URLSearchParams();
+    for (const [k, v] of new FormData(form)) params.set(k, v);  // last value wins: checkbox over its hidden default
+    return params;
+  }
+  async function runSearch() {
+    const form = $("search-form");
+    const results = $("operator-results");
+    const params = searchParams(form);
+    if (inflight) inflight.abort();
+    inflight = new AbortController();
+    results.setAttribute("aria-busy", "true");
+    results.classList.add("fh-loading");
+    try {
+      const r = await fetch(`/search?${params}`, {signal: inflight.signal, cache: "no-store"});
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      results.innerHTML = await r.text();
+      history.replaceState(null, "", `/?${params}`);  // reloads and later actions keep the search
+    } catch (err) {
+      if (err.name !== "AbortError") toast("danger", `Search failed: ${err.message}`);
+    } finally {
+      results.removeAttribute("aria-busy");
+      results.classList.remove("fh-loading");
+    }
+  }
+  document.addEventListener("submit", (e) => {
+    if (e.target.id === "search-form") { e.preventDefault(); clearTimeout(timer); runSearch(); }
+  });
+  document.addEventListener("input", (e) => {
+    if (e.target.form?.id === "search-form" && e.target.name === "q") { clearTimeout(timer); timer = setTimeout(runSearch, 300); }
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target.form?.id === "search-form" && e.target.name !== "q") runSearch();
+  });
+
+  // ---------------------------------------------------------------- import file name
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "isc-file") $("isc-file-name").textContent = e.target.files[0]?.name || "No file selected";
+  });
+
+  // ---------------------------------------------------------------- release versions
+  async function loadVersions(channel) {
+    const help = $("release-help");
+    try {
+      const data = await (await fetch(`/api/releases/versions?channel=${encodeURIComponent(channel)}`)).json();
+      if (!data.versions.length) { help.textContent = data.error || `No releases found in ${channel}.`; return; }
+      for (const id of ["min_version", "max_version"]) {
+        const sel = $(id);
+        const keep = sel.value;
+        const placeholder = sel.options[0].cloneNode(true);
+        sel.replaceChildren(placeholder, ...data.versions.map((v) => new Option(v, v, false, v === keep)));
+        if (!data.versions.includes(keep)) sel.value = "";
+      }
+      help.textContent = `${data.versions.length} releases in ${channel}, newest first. Equal min and max mirror exactly one release.`;
+    } catch (e) {
+      help.textContent = "Couldn't reach the update service; versions not refreshed.";
+    }
+  }
+  document.addEventListener("change", (e) => { if (e.target.id === "channel") loadVersions(e.target.value); });
+
+  // a page opened with ?job=... (no-JS redirect, or another tab) still follows the running scan
+  if (dlg.dataset.job) followJob(dlg.dataset.job, dlg.dataset.title || "Scanning catalog");
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,68 @@
+# Suggested operator sets for the mirror UI. Each preset adds packages to the plan with their
+# default channels; anything a catalog doesn't contain is reported, not silently skipped.
+# Catalog keys are index names; the UI resolves them to the tag for the selected OCP version.
+
+# Always mirrored as additionalImages, alongside every mirrored operator's must-gather image.
+base_images:
+  - registry.redhat.io/ubi9/ubi:latest
+  - registry.redhat.io/rhel9/support-tools:latest
+
+# Relationships the catalogs don't declare: the left operator creates the right ones' subscriptions
+# at install time, so they must be mirrored too. Declared OLM dependencies are found automatically.
+companions:
+  odf-operator: [odf-dependencies]
+  advanced-cluster-management: [multicluster-engine]
+
+presets:
+  border-sno:
+    title: Border SNO
+    description: Firewall VM and support VMs on a single node with local disks.
+    operators:
+      redhat-operator-index:
+        - lvms-operator
+        - kubevirt-hyperconverged
+        - kubernetes-nmstate-operator
+        - redhat-oadp-operator
+
+  infra-hub:
+    title: Infra hub
+    description: ACM/MCE hub with Quay, MCG (S3) and OADP backups, on Pure FlashArray storage.
+    operators:
+      redhat-operator-index:
+        - advanced-cluster-management
+        - multicluster-engine
+        - quay-operator
+        - odf-operator
+        - redhat-oadp-operator
+        - openshift-gitops-operator
+        - kubernetes-nmstate-operator
+        - cincinnati-operator
+      certified-operator-index:
+        - portworx-certified
+
+  app-baseline:
+    title: App cluster baseline
+    description: GitOps-managed app cluster with VM-level networking and backups.
+    operators:
+      redhat-operator-index:
+        - openshift-gitops-operator
+        - kubernetes-nmstate-operator
+        - redhat-oadp-operator
+
+  virtualization:
+    title: Virtualization
+    description: OpenShift Virtualization with migration and node remediation.
+    operators:
+      redhat-operator-index:
+        - kubevirt-hyperconverged
+        - kubernetes-nmstate-operator
+        - mtv-operator
+        - node-healthcheck-operator
+        - self-node-remediation
+
+  gitops:
+    title: GitOps
+    description: Argo CD for policy and application delivery.
+    operators:
+      redhat-operator-index:
+        - openshift-gitops-operator

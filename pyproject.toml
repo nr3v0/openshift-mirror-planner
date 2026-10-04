@@ -1,0 +1,41 @@
+[project]
+name = "openshift-mirror-planner"
+dynamic = ["version"]
+description = "Plan disconnected OpenShift content in a browser and render oc-mirror v2 ImageSetConfigurations"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "pydantic>=2",
+  "pyyaml",
+  "httpx",
+  "jinja2",
+  "python-multipart",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+mirror-planner = "mirror_planner.cli:main"
+
+[project.urls]
+Source = "https://github.com/nr3v0/openshift-mirror-planner"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = { attr = "mirror_planner.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["mirror_planner*"]
+
+[tool.setuptools.package-data]
+mirror_planner = ["presets.yaml", "templates/*.html", "static/*.css", "static/patternfly/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

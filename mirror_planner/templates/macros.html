@@ -1,0 +1,38 @@
+{# PatternFly 6 building blocks used by the planner pages. #}
+{% macro icon(name) %}<i class="fas fa-fw fa-{{ name }}" aria-hidden="true"></i>{% endmacro %}
+
+{% macro alert(variant, text) -%}
+{% set icons = {"success": "check-circle", "danger": "exclamation-circle", "warning": "exclamation-triangle", "info": "info-circle"} %}
+<div class="pf-v6-c-alert pf-m-{{ variant }} pf-m-inline" role="alert">
+  <div class="pf-v6-c-alert__icon">{{ icon(icons[variant]) }}</div>
+  <p class="pf-v6-c-alert__title fh-wrap-anywhere"><span class="pf-v6-screen-reader">{{ variant | title }} alert:</span>{{ text }}</p>
+</div>
+{%- endmacro %}
+
+{% macro label(text, color=None, ic=None) -%}
+<span class="pf-v6-c-label{% if color %} pf-m-{{ color }}{% endif %} pf-m-compact"><span class="pf-v6-c-label__content">
+  {% if ic %}<span class="pf-v6-c-label__icon">{{ icon(ic) }}</span>{% endif %}<span class="pf-v6-c-label__text">{{ text }}</span></span></span>
+{%- endmacro %}
+
+{% macro button(text, variant="secondary", type="submit", ic=None, small=False, attrs="") -%}
+<button class="pf-v6-c-button {% for v in variant.split() %}pf-m-{{ v }} {% endfor %}{% if small %}pf-m-small{% endif %}" type="{{ type }}" {{ attrs | safe }}>
+  {% if ic %}<span class="pf-v6-c-button__icon pf-m-start">{{ icon(ic) }}</span>{% endif %}<span class="pf-v6-c-button__text">{{ text }}</span></button>
+{%- endmacro %}
+
+{% macro card_open(title, id=None, region=None) -%}
+<div class="pf-v6-c-card"{% if id %} id="{{ id }}"{% endif %}>
+  <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__header-main">
+    <div class="pf-v6-c-card__title"><h2 class="pf-v6-c-card__title-text">{{ title }}</h2></div></div></div>
+  <div class="pf-v6-c-card__body"{% if region %} data-region="{{ region }}"{% endif %}>
+{%- endmacro %}
+{% macro card_close() %}</div></div>{% endmacro %}
+
+{% macro select_wrap() -%}
+<span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon">{{ icon("caret-down") }}</span></span>
+{%- endmacro %}
+
+{% macro empty(title, text) -%}
+<div class="pf-v6-c-empty-state pf-m-xs"><div class="pf-v6-c-empty-state__content">
+  <div class="pf-v6-c-empty-state__title"><h3 class="pf-v6-c-empty-state__title-text">{{ title }}</h3></div>
+  <div class="pf-v6-c-empty-state__body">{{ text }}</div></div></div>
+{%- endmacro %}
