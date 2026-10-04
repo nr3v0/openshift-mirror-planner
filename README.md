@@ -17,7 +17,7 @@ podman run -d --name mirror-planner --userns=keep-id --user "$(id -u):$(id -g)" 
   -p 127.0.0.1:8088:8088 \
   -v ./mirror:/data/mirror:z \
   -v ./pull-secret.json:/run/secrets/pull-secret.json:ro,z \
-  quay.io/nr3v0/openshift-mirror-planner:v1.1.1
+  quay.io/nr3v0/openshift-mirror-planner:v1.1.2
 ```
 
 Open http://127.0.0.1:8088/ and build the plan. `mirror/imageset-config.yaml` is updated on
