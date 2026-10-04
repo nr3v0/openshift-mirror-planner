@@ -22,7 +22,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import imageset
-from .catalog import DEFAULT_CATALOGS, CatalogCache, CatalogSummary, Package, catalog_image, valid_image_ref
+from .catalog import (DEFAULT_CATALOGS, CatalogCache, CatalogSummary, Package, catalog_image, catalog_name,
+                      valid_image_ref)
 from .releases import ReleaseGraph, version_key
 
 HERE = Path(__file__).parent
@@ -30,6 +31,7 @@ HERE = Path(__file__).parent
 # answer with JSON for the page to apply instead of redirecting.
 FETCH: contextvars.ContextVar[bool] = contextvars.ContextVar("fh_fetch", default=False)
 TEMPLATES = Jinja2Templates(directory=str(HERE / "templates"))
+TEMPLATES.env.filters["catalog_name"] = catalog_name
 ALL_CATALOGS = "__all__"
 
 
@@ -203,7 +205,8 @@ def create_mirror_app(mirror_dir: Path, cache: CatalogCache, ocp_channel: str, o
         return {"cats": cats, "sums": sums, "catalog": catalog, "image": image, "q": q,
                 "disconnected_only": disconnected_only, "results": results, "all_key": ALL_CATALOGS,
                 "selected": {(c.image, p.name): p for c in plan.catalogs for p in c.packages},
-                "names": {img: key for key, img in cats.items()}, "here": page_url(request)}
+                "names": {img: key if key in DEFAULT_CATALOGS else catalog_name(img) for key, img in cats.items()},
+                "here": page_url(request)}
 
     @app.get("/search", response_class=HTMLResponse)
     def search_fragment(request: Request, q: str = "", catalog: str = "redhat-operator-index",

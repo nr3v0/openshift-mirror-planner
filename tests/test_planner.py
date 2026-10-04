@@ -209,6 +209,10 @@ def test_add_scan_select_and_remove_custom_catalog(tmp_path):
 
     page = c.get("/", params={"catalog": custom, "q": "acme", "disconnected_only": "false"}).text
     assert "acme-operator" in page and "TLS not verified" in page
+    assert "<strong>acme-index</strong>" in page and "Added catalog" not in page          # shown by its image name
+    assert re.search(r'<option value="[^"]*acme-index:v1"\s+selected\s*>acme-index</option>', page)
+    everywhere = c.get("/", params={"catalog": "__all__", "q": "acme", "disconnected_only": "false"}).text
+    assert re.search(r'pf-v6-c-label__text">acme-index<', everywhere)                     # result label
 
     c.post("/packages/add", data={"image": custom, "name": "acme-operator", "channel": "stable"})
     isc = yaml.safe_load((mirror / "imageset-config.yaml").read_text())
@@ -473,3 +477,10 @@ def test_import_endpoint_reports_folded_dependencies(tmp_path):
     saved = yaml.safe_load((mirror / "plan.yaml").read_text())
     assert [p["name"] for p in saved["catalogs"][0]["packages"]] == ["odf-operator"]
     assert "Added as dependencies" in c.get("/").text
+
+
+def test_catalog_name():
+    from mirror_planner.catalog import catalog_name
+    assert catalog_name("quay.io/dbewley/bewley-operator-catalog:latest") == "bewley-operator-catalog"
+    assert catalog_name("registry.lab.example:5000/ops/acme-index@sha256:" + "0" * 64) == "acme-index"
+    assert catalog_name("registry.redhat.io/redhat/redhat-operator-index:v4.22") == "redhat-operator-index"

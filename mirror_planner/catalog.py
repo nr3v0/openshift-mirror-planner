@@ -47,6 +47,12 @@ def valid_image_ref(image: str) -> bool:
     return "." in host or ":" in host or host == "localhost"  # a registry host, not a Docker Hub path
 
 
+def catalog_name(image: str) -> str:
+    """Display name for a catalog image: its repository's last path part, without tag or digest
+    (quay.io/acme/partner-operator-index:v1 -> partner-operator-index)."""
+    return image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
+
+
 def catalog_slug(image: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", image.split("/")[-1].replace(":", "-"))
 

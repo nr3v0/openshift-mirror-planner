@@ -64,7 +64,7 @@
         {% for name, img in cats.items() %}
         <tr class="pf-v6-c-table__tr">
           <td class="pf-v6-c-table__td" data-label="Catalog">
-            <strong>{% if img in extra %}Added catalog{% else %}{{ name }}{% endif %}</strong>
+            <strong>{{ img | catalog_name if img in extra else name }}</strong>
             {% if img in extra and extra[img].insecure %}{{ label("TLS not verified", "orange", "exclamation-triangle") }}{% endif %}
             <div class="fh-mono fh-muted fh-wrap">{{ img }}</div></td>
           <td class="pf-v6-c-table__td" data-label="Status">
@@ -125,7 +125,7 @@
           <select name="catalog" aria-label="Catalog">
             <option value="{{ all_key }}" {% if catalog == all_key %}selected{% endif %}>All catalogs</option>
             {% for name, img in cats.items() %}
-            <option value="{{ name }}" {% if name == catalog %}selected{% endif %}>{{ name if img not in extra else img.split("/")[-1] }}</option>
+            <option value="{{ name }}" {% if name == catalog %}selected{% endif %}>{{ name if img not in extra else img | catalog_name }}</option>
             {% endfor %}
           </select>{{ select_wrap() }}</span>
         {{ check("disc", "disconnected_only", "Disconnected-capable only", disconnected_only) }}

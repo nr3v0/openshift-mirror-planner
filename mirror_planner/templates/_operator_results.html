@@ -27,7 +27,7 @@
         {% else %}{{ label("Needs internet", "red", "exclamation-circle") }}{% endif %}
         {% if p.deprecated %}{{ label("Deprecated", "red") }}{% endif %}
         {% if sel %}{{ label("Selected", "blue") }}{% endif %}
-        {% if catalog == all_key %}{{ label(names.get(img, img).split("/")[-1]) }}{% endif %}
+        {% if catalog == all_key %}{{ label(names.get(img) or img | catalog_name) }}{% endif %}
       </div>
       <div class="fh-muted">{{ p.provider or "" }}{% if p.requires_packages %} · needs {{ p.requires_packages | join(", ") }}{% endif %}</div>
       {% if p.description %}<details class="fh-description"><summary>Description</summary><p>{{ p.description }}</p></details>{% endif %}
