@@ -99,7 +99,7 @@
         {{ button("Add catalog", "secondary", ic="plus") }}
       </form>
       <p class="fh-muted fh-gap-top-sm">Any file-based catalog index image with a tag or digest. The pull secret must
-        hold credentials for its registry. Scans run <span class="fh-mono">oc image extract</span> on the index (about 15 s).</p>
+        hold credentials for its registry. A scan downloads the index's file-based configs (about 15 s).</p>
     {{ card_close() }}
 
     {{ card_open("Suggested sets") }}
@@ -197,8 +197,9 @@
     {{ card_open("imageset-config.yaml", region="isc") }}
       <div class="pf-v6-c-code-block"><div class="pf-v6-c-code-block__content fh-code">
         <pre class="pf-v6-c-code-block__pre"><code class="pf-v6-c-code-block__code">{{ isc }}</code></pre></div></div>
-      <p class="fh-muted fh-gap-top-sm">Next: <span class="fh-mono">make mirror</span> (or <span class="fh-mono">mirror-planner mirror</span>) writes the bundle to
-        <span class="fh-mono">{{ mirror_dir }}</span>.</p>
+      <p class="fh-muted fh-gap-top-sm">Saved as <span class="fh-mono">{{ mirror_dir }}/imageset-config.yaml</span>;
+        hand it to <span class="fh-mono">oc-mirror --v2 -c</span> along with any flags in
+        <span class="fh-mono">oc-mirror.flags</span>.</p>
     {{ card_close() }}
     {{ card_open("Import ImageSetConfiguration") }}
       <form method="post" action="/import" enctype="multipart/form-data" class="fh-toolbar-form" id="import-form"
@@ -299,7 +300,7 @@
 
   // ---------------------------------------------------------------- scan progress dialog
   const dlg = $("busy");
-  const phases = {starting: "Starting", extracting: "Extracting the catalog", parsing: "Reading packages",
+  const phases = {starting: "Starting", extracting: "Downloading the catalog", parsing: "Reading packages",
                   done: "Done", failed: "Failed"};
   dlg.addEventListener("cancel", (e) => e.preventDefault());  // Esc must not unlock the page
 

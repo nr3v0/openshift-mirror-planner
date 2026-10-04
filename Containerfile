@@ -1,37 +1,19 @@
-# OpenShift mirror planner: web UI + oc + oc-mirror in one image.
+# OpenShift mirror planner: build oc-mirror ImageSetConfigurations in a browser.
 #
 #   podman build --pull=always -t openshift-mirror-planner .
-#   podman build --pull=always --build-arg OCP_CHANNEL=stable-4.21 -t openshift-mirror-planner:4.21 .
 #
 # Every stage applies all available package updates. The runtime is ubi-micro with only the
-# Python runtime and CA certificates installed into it: no package manager, compilers, headers
-# or other build tooling ship in the image.
+# Python runtime and CA certificates installed into it: no package manager, compilers, headers,
+# build tooling or OpenShift binaries ship in the image. Catalog scans read registries directly.
 #
 # Volumes (see README):
-#   /data/mirror                    plan.yaml, imageset-config.yaml, catalog scans, the oc-mirror bundle
-#   /data/cache                     oc-mirror image cache (large)
-#   /run/secrets/pull-secret.json   pull secret, read-only
+#   /data/mirror                    plan.yaml, imageset-config.yaml, catalog scan summaries
+#   /run/secrets/pull-secret.json   pull secret for catalog scans, read-only
 
 ARG OCP_CHANNEL=stable-4.22
-ARG OCP_VERSION=
-ARG UBI_MINIMAL=registry.access.redhat.com/ubi9/ubi-minimal:latest
 ARG UBI_PYTHON=registry.access.redhat.com/ubi9/python-312:latest
 ARG UBI=registry.access.redhat.com/ubi9/ubi:latest
 ARG UBI_MICRO=registry.access.redhat.com/ubi9/ubi-micro:latest
-
-# ---------------------------------------------------------------- clients, checksum-verified
-FROM ${UBI_MINIMAL} AS clients
-ARG OCP_CHANNEL
-ARG OCP_VERSION
-RUN microdnf -y update && microdnf -y install tar gzip findutils && microdnf clean all
-COPY scripts/fetch-clients.sh /src/scripts/fetch-clients.sh
-RUN DL=/dl OCP_CHANNEL=${OCP_CHANNEL} OCP_VERSION=${OCP_VERSION} /src/scripts/fetch-clients.sh \
- && . /dl/versions.env \
- && mkdir /out \
- && tar --no-same-owner -xzf /dl/${OPENSHIFT_CLIENT_TGZ} -C /out oc \
- && tar --no-same-owner -xzf /dl/${OC_MIRROR_TGZ} -C /out oc-mirror \
- && chmod 0755 /out/* \
- && cp /dl/versions.env /out/
 
 # ---------------------------------------------------------------- application, built into a venv
 FROM ${UBI_PYTHON} AS build
@@ -39,7 +21,7 @@ USER 0
 RUN dnf -y update && dnf clean all
 COPY pyproject.toml README.md LICENSE /src/
 COPY mirror_planner /src/mirror_planner
-# The venv uses /usr/bin/python3.12, which the runtime stage installs from the same RPM.
+# The venv uses /usr/bin/python3.12, which the runtime installs from the same RPM.
 RUN /usr/bin/python3.12 -m venv /opt/mirror-planner \
  && /opt/mirror-planner/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
  && /opt/mirror-planner/bin/pip install --no-cache-dir --upgrade --upgrade-strategy eager /src \
@@ -57,27 +39,23 @@ RUN dnf -y update \
         install python3.12 ca-certificates \
  && dnf -y --installroot=/rootfs clean all \
  && rm -rf /rootfs/var/cache/dnf /rootfs/var/log/dnf* /rootfs/var/lib/dnf/history* \
- && mkdir -p /rootfs/data/mirror /rootfs/data/cache && chmod 0777 /rootfs/data/mirror /rootfs/data/cache
+ && mkdir -p /rootfs/data/mirror && chmod 0777 /rootfs/data/mirror
 
 # ---------------------------------------------------------------- runtime
 FROM ${UBI_MICRO}
 ARG OCP_CHANNEL
 
 LABEL org.opencontainers.image.title="OpenShift mirror planner" \
-      org.opencontainers.image.description="Plan disconnected OpenShift content and run oc-mirror v2" \
+      org.opencontainers.image.description="Build oc-mirror ImageSetConfigurations for disconnected OpenShift" \
       org.opencontainers.image.source="https://github.com/nr3v0/openshift-mirror-planner" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=rootfs /rootfs/ /
-COPY --from=clients /out/oc /out/oc-mirror /usr/local/bin/
-COPY --from=clients /out/versions.env /usr/local/share/mirror-planner/clients.env
 COPY --from=build /opt/mirror-planner /opt/mirror-planner
 
-# oc-mirror keeps state under $HOME; point it at the cache volume. Any UID works (--userns=keep-id).
 ENV PATH=/opt/mirror-planner/bin:${PATH} \
     MIRROR_DIR=/data/mirror \
-    OC_MIRROR_CACHE=/data/cache \
-    HOME=/data/cache \
+    HOME=/tmp \
     PULL_SECRET_FILE=/run/secrets/pull-secret.json \
     OCP_CHANNEL=${OCP_CHANNEL} \
     LISTEN=0.0.0.0 \
@@ -85,7 +63,7 @@ ENV PATH=/opt/mirror-planner/bin:${PATH} \
     PYTHONDONTWRITEBYTECODE=1
 
 USER 1001
-VOLUME ["/data/mirror", "/data/cache"]
+VOLUME ["/data/mirror"]
 EXPOSE 8088
 ENTRYPOINT ["mirror-planner"]
 CMD ["serve"]

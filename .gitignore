@@ -3,7 +3,6 @@ __pycache__/
 *.egg-info/
 dl/
 mirror/
-oc-mirror-cache/
 output/
 *.pull-secret.json
 *pull-secret*.json

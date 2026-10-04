@@ -1,6 +1,7 @@
 """Operator catalog indexes: extract, parse and summarize file-based catalogs (FBC).
 
-`oc image extract <index> --path /configs/:<dir>` gives one directory per package holding
+An index image's /configs directory (read straight from the registry by registry.py) holds
+one directory per package with
 olm.package, olm.channel and olm.bundle objects as JSON streams or YAML. This module turns
 that into a compact summary per package: channels with their head versions, display
 metadata from the default channel's head bundle, the disconnected annotation, and
@@ -12,8 +13,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import subprocess
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -277,12 +276,12 @@ def parse_configs(configs_dir: Path, image: str, progress: Progress | None = Non
 
 
 class CatalogCache:
-    """<cache>/<slug>/summary.json, refreshed from the registry with `oc image extract`."""
+    """<cache>/<slug>/summary.json, refreshed by reading the catalog image from its registry."""
 
-    def __init__(self, cache_dir: Path, oc: str = "oc", authfile: str | None = None):
+    def __init__(self, cache_dir: Path, authfile: str | None = None, transport=None):
         self.dir = cache_dir
-        self.oc = oc
         self.authfile = authfile
+        self.transport = transport  # tests swap the network for a fake registry
 
     def summary_path(self, image: str) -> Path:
         return self.dir / catalog_slug(image) / "summary.json"
@@ -295,28 +294,27 @@ class CatalogCache:
         shutil.rmtree(self.dir / catalog_slug(image), ignore_errors=True)
 
     def refresh(self, image: str, insecure: bool = False, progress: Progress | None = None) -> CatalogSummary:
-        """Extract the catalog's /configs and summarize it. `progress` gets the extracted size
-        while `oc image extract` runs (its total isn't known in advance), then parse progress."""
+        """Download the catalog's file-based configs (the directory its configs label names) and
+        summarize them. `progress` gets download progress, then parse progress."""
+        from .registry import RegistryError, extract_path
+
         configs = self.dir / catalog_slug(image) / "configs"
         shutil.rmtree(configs, ignore_errors=True)
         configs.mkdir(parents=True)
-        cmd = [self.oc, "image", "extract", image, "--path", f"/configs/:{configs}", "--confirm"]
-        if self.authfile:
-            cmd += ["-a", self.authfile]
-        if insecure:
-            cmd += ["--insecure=true"]
         if progress:
             progress("extracting", None, "contacting registry")
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        while proc.poll() is None:
+
+        def downloaded(done: int, total: int) -> None:
             if progress:
-                size = sum(f.stat().st_size for f in configs.rglob("*") if f.is_file())
-                if size:
-                    progress("extracting", None, f"{size / 1e6:.0f} MB extracted")
-            time.sleep(0.5)
-        stderr = proc.stderr.read() if proc.stderr else ""
-        if proc.returncode != 0:
-            raise RuntimeError(f"oc image extract {image} failed: {stderr.strip()[-500:]}")
+                progress("extracting", done / total if total else None,
+                         f"{done / 1e6:.0f} of {total / 1e6:.0f} MB downloaded")
+
+        try:
+            extract_path(image, None, configs, authfile=self.authfile, insecure=insecure,
+                         progress=downloaded, transport=self.transport)
+        except RegistryError as e:
+            shutil.rmtree(configs, ignore_errors=True)
+            raise RuntimeError(f"scan of {image} failed: {e}") from e
         summary = parse_configs(configs, image, progress)
         self.summary_path(image).write_text(summary.model_dump_json())
         shutil.rmtree(configs)  # the summary is all later reads need

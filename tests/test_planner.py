@@ -10,6 +10,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from mirror_planner import imageset
+from fakeregistry import FakeRegistry, catalog_files, layer
 from mirror_planner.catalog import CatalogCache, catalog_image, parse_configs, resolve_dependencies
 from mirror_planner.app import create_mirror_app
 from mirror_planner.releases import ReleaseGraph
@@ -168,21 +169,13 @@ def test_ui_add_preset_and_write_imageset(tmp_path):
     assert [p["name"] for p in isc["mirror"]["operators"][0]["packages"]] == ["lvms-operator"]
 
 
-def fake_oc(tmp_path: Path) -> Path:
-    """Stand-in for `oc image extract`: writes a one-package catalog and records its arguments."""
-    script = tmp_path / "oc"
-    script.write_text(f"""#!/usr/bin/bash
-echo "$@" >> {tmp_path}/oc.args
-dest=$(printf '%s\\n' "$@" | sed -n 's|^/configs/:||p')
-mkdir -p "$dest/acme-operator"
-cat > "$dest/acme-operator/catalog.json" <<'EOF'
-{{"schema": "olm.package", "name": "acme-operator", "defaultChannel": "stable"}}
-{{"schema": "olm.channel", "package": "acme-operator", "name": "stable", "entries": [{{"name": "acme-operator.v1.2.0"}}]}}
-{{"schema": "olm.bundle", "name": "acme-operator.v1.2.0", "package": "acme-operator", "properties": [{{"type": "olm.package", "value": {{"packageName": "acme-operator", "version": "1.2.0"}}}}]}}
-EOF
-""")
-    script.chmod(0o755)
-    return script
+def acme_registry(tmp_path: Path, delay: float = 0.0):
+    """A fake registry serving a one-operator catalog, and a cache wired to it."""
+    reg = FakeRegistry(delay=delay)
+    reg.add_image("ops/acme-index", "v1", [layer(catalog_files("acme-operator"))])
+    cache = CatalogCache(tmp_path / "mirror" / ".catalogs", authfile=reg.authfile(tmp_path / "auth.json"),
+                         transport=reg.transport())
+    return reg, cache
 
 
 def wait_for_job(c: TestClient, location: str) -> dict:
@@ -196,8 +189,11 @@ def wait_for_job(c: TestClient, location: str) -> dict:
 
 
 def test_add_scan_select_and_remove_custom_catalog(tmp_path):
-    custom = "registry.lab.example:5000/ops/acme-index:v1"
-    cache = CatalogCache(tmp_path / "mirror" / ".catalogs", oc=str(fake_oc(tmp_path)))
+    custom = "registry.lab.example/ops/acme-index:v1"
+    _, cache = acme_registry(tmp_path)
+    scans = []
+    real_refresh = cache.refresh
+    cache.refresh = lambda image, insecure=False, progress=None: (scans.append(insecure), real_refresh(image, insecure, progress))[1]
     c = TestClient(create_mirror_app(tmp_path / "mirror", cache, "stable-4.22", "4.22.15", graph=offline_graph()))
     mirror = tmp_path / "mirror"
 
@@ -208,8 +204,8 @@ def test_add_scan_select_and_remove_custom_catalog(tmp_path):
                                       "back_to": "/"}, follow_redirects=False)
     job = wait_for_job(c, r.headers["location"])
     assert job["state"] == "done" and "1+operator" in job["result_url"] and job["msg"].endswith("1 operator")
-    assert "--insecure=true" in (tmp_path / "oc.args").read_text()
-    assert not (cache.dir / "registry.lab.example-5000-ops-acme-index-v1" / "configs").exists()  # raw extract dropped
+    assert scans == [True]                                              # TLS verification skipped as asked
+    assert not (cache.dir / "registry.lab.example-ops-acme-index-v1" / "configs").exists()  # raw extract dropped
 
     page = c.get("/", params={"catalog": custom, "q": "acme", "disconnected_only": "false"}).text
     assert "acme-operator" in page and "TLS not verified" in page
@@ -235,9 +231,7 @@ def test_builtin_catalog_cannot_be_removed(tmp_path):
 
 def test_one_scan_at_a_time_and_page_shows_running_job(tmp_path):
     custom = "registry.lab.example/ops/acme-index:v1"
-    oc = fake_oc(tmp_path)
-    oc.write_text(oc.read_text().replace("#!/usr/bin/bash\n", "#!/usr/bin/bash\nsleep 1\n"))
-    cache = CatalogCache(tmp_path / "mirror" / ".catalogs", oc=str(oc))
+    _, cache = acme_registry(tmp_path, delay=0.3)
     c = TestClient(create_mirror_app(tmp_path / "mirror", cache, "stable-4.22", "4.22.15", graph=offline_graph()))
 
     first = c.post("/catalogs/add", data={"image": custom, "scan": "true", "back_to": "/"}, follow_redirects=False)
@@ -255,14 +249,13 @@ def test_one_scan_at_a_time_and_page_shows_running_job(tmp_path):
 
 
 def test_failed_scan_reports_error(tmp_path):
-    oc = tmp_path / "oc"
-    oc.write_text("#!/usr/bin/bash\necho 'unauthorized: authentication required' >&2\nexit 1\n")
-    oc.chmod(0o755)
-    cache = CatalogCache(tmp_path / "mirror" / ".catalogs", oc=str(oc))
+    reg, cache = acme_registry(tmp_path)
+    reg.password = "rotated"                                            # the pull secret no longer works
     c = TestClient(create_mirror_app(tmp_path / "mirror", cache, "stable-4.22", "4.22.15", graph=offline_graph()))
-    r = c.post("/catalogs/refresh", data={"image": IMAGE, "back_to": "/"}, follow_redirects=False)
+    r = c.post("/catalogs/refresh", data={"image": "registry.lab.example/ops/acme-index:v1", "back_to": "/"},
+               follow_redirects=False)
     job = wait_for_job(c, r.headers["location"])
-    assert job["state"] == "failed" and "authentication required" in job["detail"]
+    assert job["state"] == "failed" and "login refused" in job["detail"]
     assert "err=" in job["result_url"]
 
 

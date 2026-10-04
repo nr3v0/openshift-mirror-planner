@@ -2,9 +2,8 @@
 
 IMAGE       ?= localhost/openshift-mirror-planner:latest
 OCP_CHANNEL ?= stable-4.22
-# Folders mounted into the container
+# Folder mounted into the container
 MIRROR_DIR  ?= $(CURDIR)/mirror
-CACHE_DIR   ?= $(CURDIR)/oc-mirror-cache
 PULL_SECRET ?= $(firstword $(wildcard $(CURDIR)/pull-secret.json $(CURDIR)/dl/*pull-secret*.json))
 PORT        ?= 8088
 NAME        ?= mirror-planner
@@ -16,21 +15,18 @@ MP   := $(VENV)/bin/mirror-planner
 # keep-id plus --user: the container runs as you, so files in the mounted folders are yours
 RUN_ARGS = --userns=keep-id --user $(shell id -u):$(shell id -g) \
 	-v $(MIRROR_DIR):/data/mirror:z \
-	-v $(CACHE_DIR):/data/cache:z \
 	-v $(PULL_SECRET):/run/secrets/pull-secret.json:ro,z
 
-.PHONY: help venv test serve clients image scan run start stop logs mirror dry-run imageset vendor-patternfly check-secret
+.PHONY: help venv test serve image scan run start stop logs imageset vendor-patternfly check-secret
 
 help:
-	@echo "Container (self-contained: oc and oc-mirror are inside the image)"
+	@echo "Container"
 	@echo "  make image                    build $(IMAGE) from freshly pulled, fully updated bases"
 	@echo "  make scan                     list the image's vulnerabilities (Trivy, run as a container)"
 	@echo "  make run | start | stop | logs  UI on http://127.0.0.1:$(PORT)/ (foreground | background)"
-	@echo "  make mirror                   oc-mirror --v2 to disk for the plan, in the container"
-	@echo "  make dry-run                  same, resolving images without downloading them"
 	@echo "  make imageset                 regenerate imageset-config.yaml from plan.yaml"
-	@echo "Folders: MIRROR_DIR=$(MIRROR_DIR) CACHE_DIR=$(CACHE_DIR) PULL_SECRET=$(PULL_SECRET)"
-	@echo "Development: make venv | test | serve | clients | vendor-patternfly"
+	@echo "Folder: MIRROR_DIR=$(MIRROR_DIR)  Pull secret: PULL_SECRET=$(PULL_SECRET)"
+	@echo "Development: make venv | test | serve | vendor-patternfly"
 
 # ---------------------------------------------------------------- development
 venv: $(MP)
@@ -42,12 +38,9 @@ $(MP): pyproject.toml
 test: venv
 	$(VENV)/bin/pytest -q
 
-# Run the UI from the checkout; needs oc on PATH (or `make clients` and OC=dl/...) for catalog scans.
+# Run the UI from the checkout.
 serve: venv
 	MIRROR_DIR=$(MIRROR_DIR) PULL_SECRET_FILE=$(PULL_SECRET) $(MP) serve --port $(PORT)
-
-clients:
-	DL=$(CURDIR)/dl OCP_CHANNEL=$(OCP_CHANNEL) scripts/fetch-clients.sh
 
 vendor-patternfly:
 	scripts/vendor-patternfly.sh
@@ -67,7 +60,7 @@ scan:
 
 check-secret:
 	@test -n "$(PULL_SECRET)" -a -f "$(PULL_SECRET)" || { echo "set PULL_SECRET=/path/to/pull-secret.json"; exit 1; }
-	@mkdir -p $(MIRROR_DIR) $(CACHE_DIR)
+	@mkdir -p $(MIRROR_DIR)
 
 run: check-secret
 	$(PODMAN) run --rm -it --name $(NAME) -p 127.0.0.1:$(PORT):8088 $(RUN_ARGS) $(IMAGE)
@@ -81,12 +74,6 @@ stop:
 
 logs:
 	$(PODMAN) logs -f $(NAME)
-
-mirror: check-secret
-	$(PODMAN) run --rm $(RUN_ARGS) $(IMAGE) mirror
-
-dry-run: check-secret
-	$(PODMAN) run --rm $(RUN_ARGS) $(IMAGE) mirror --dry-run
 
 imageset: check-secret
 	$(PODMAN) run --rm $(RUN_ARGS) $(IMAGE) imageset

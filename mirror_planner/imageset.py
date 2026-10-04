@@ -179,7 +179,7 @@ def render(plan: MirrorPlan, summaries: dict[str, CatalogSummary],
 def write(plan: MirrorPlan, summaries: dict[str, CatalogSummary], companions: dict[str, list[str]],
           mirror_dir: Path, base_images: list[str] | None = None) -> Path:
     plan.save(mirror_dir / "plan.yaml")
-    # extra oc-mirror flags the plan implies; `make mirror` reads this file
+    # oc-mirror flags the plan implies, for whatever runs the mirror (e.g. a catalog without TLS verification)
     flags = ["--src-tls-verify=false"] if any(e.insecure for e in plan.extra_catalogs) else []
     (mirror_dir / "oc-mirror.flags").write_text(" ".join(flags) + "\n")
     out = mirror_dir / "imageset-config.yaml"
